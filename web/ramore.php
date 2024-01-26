@@ -7,22 +7,21 @@
 		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/zebra_dialog@latest/dist/css/flat/zebra_dialog.min.css">
 		<link rel="stylesheet" href="waitMe.min.css" />
 		<style>
-html, body { height: 100%; }
-body { font-family: arial; background-color:#D4FFE9; user-select:none }
-input { top-padding:10px }
-#f { width: 5em; }
-#banda { width: 4em; }
-#soglia { width: 3em; }
-#ascolto { margin-bottom: 50px }
-#modalita { color: blue }
-#input { float:left }
-#impostazioni { margin-top:10px }
-#chart-container { float:right; border :1px solid lightgray; width:600px; height:400px }
-#tLastRec { margin-top: 10px }
-#suggerimenti { margin-top:60px; width: 300px }
-.rosso { color:indianred }
-.row { margin-top:10px }
-.impostazione { font-weight: bold }
+		body { font-family: arial; background-color:#D4FFE9; user-select:none }
+		input { top-padding:10px }
+		#f { width: 5em; }
+		#banda { width: 4em; }
+		#soglia { width: 3em; }
+		#ascolto { margin-bottom: 50px }
+		#modalita { color: blue }
+		#input { float:left }
+		#impostazioni { margin-top:10px }
+		#chart-container { float:right; border :1px solid lightgray; width:600px; height:400px }
+		#tLastRec { margin-top: 10px }
+		#suggerimenti { margin-top:60px; width: 300px }
+		.rosso { color:indianred }
+		.row { margin-top:10px }
+		.impostazione { font-weight: bold }
 		</style>
 		<script src='https://code.jquery.com/jquery-3.7.1.min.js'></script>
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.0.1/chart.umd.js"></script>
@@ -31,8 +30,9 @@ input { top-padding:10px }
 		<script type="module" src='waitMe.min.js'></script>
 		<script>
 var chart, url='http://192.168.1.196:9999/';//TODO: localhost!
-const suggerimentoAscolto=`Adesso è possibile collegarsi remotamente con SDR# specificando sorgente "RTL TCP" e indirizzo ${location.host}:1234`,
-	suggerimentoMonitor='Il grafico mostra l&quot;analisi del segnale ricevuto ogni 10 secondi';
+const suggerimentoAscolto=`Adesso &egrave; possibile collegarsi remotamente con SDR# specificando sorgente "RTL TCP" e indirizzo ${location.host}:1234`,
+	suggerimentoMonitor='Il grafico mostra l&apos;analisi del segnale ricevuto ogni 10 secondi';
+var parametriModificati=false;
 	
 function getStato() {
 	$.getJSON(url+'stato')
@@ -40,12 +40,10 @@ function getStato() {
 			$('#modalita').html(stato.modo);
 			if (stato.modo=='ascolto') {
 				$('#btnAscolto').prop('disabled',true);
-				$('#btnMonitor').prop('disabled',false);
 				$('#suggerimenti').html(suggerimentoAscolto);
 				$('#chart-container').hide();
 			}
 			else if (stato.modo=='monitor') {
-				$('#btnMonitor').prop('disabled',true);
 				$('#suggerimenti').html(suggerimentoMonitor);
 				$('#chart-container').show();
 			}
@@ -60,7 +58,7 @@ function getStato() {
 			chart.update();
 		})
 		.fail(function(jqxhr, textStatus, error ) {
-			new $.Zebra_Dialog(error);
+			new $.Zebra_Dialog("Impossibile connettersi al server",{auto_close:3000});
 		})
 		.always(function() {
 			setTimeout(function(){getStato();},10000);
@@ -86,15 +84,21 @@ $(function () {
 	    years: "%d anni"
 	};
 	$('#btnMonitor').on('click',function() {
-	//TODO: inviare parametri
-		$('body').waitMe({text:'cambio modalità in corso...'});
-		$.get(url+'monitor')
+		$('body').waitMe({
+			effect: 'bouncePulse',
+			bg: 'rgba(255,255,255,0.9)',
+			text:'cambio modalità in corso...'
+		});
+		$.get(url+'monitor',{
+				f : Math.trunc(parseFloat($('#f').val())*1e6),
+				bw : Math.trunc(parseFloat($('#banda').val()*1000)),
+				thr : parseInt($('#soglia').val())
+			})
 			.done(function(x) {
 				console.log(x);
-				$('#btnAscolto').prop('disabled',false);
 			})
 			.fail(function(jqxhr, textStatus, error ) {
-				new $.Zebra_Dialog(error);
+				new $.Zebra_Dialog("Impossibile connettersi al server",{auto_close:3000});
 			})
 			.always(function() {
 				$('body').waitMe('hide');
@@ -109,7 +113,7 @@ $(function () {
 				$('#btnAscolto').prop('disabled',true);
 			})
 			.fail(function(jqxhr, textStatus, error ) {
-				new $.Zebra_Dialog(error);
+			new $.Zebra_Dialog("Impossibile connettersi al server",{auto_close:3000});
 			})
 			.always(function() {
 				$('body').waitMe('hide');
@@ -129,7 +133,6 @@ $(function () {
 		options: {
 			responsive: true,
 			maintainAspectRatio: false,
-			animation : false,
 			tooltip : { enabled : false },
 			plugins : {
 				legend : { display : false }
@@ -155,15 +158,15 @@ $(function () {
 			</div>
 			<div class='row'>
 				<label for='f' accesskey='q'>Frequenza</label>
-				<input type='number' id='f' min='100' max='500'></input> MHz
+				<input type='number' id='f' min='150' max='500' value='170.000' class='parametri'></input> MHz
 			</div>
 			<div class='row'>
 				<label for='banda' accesskey='b'>Banda</label>
-				<input type='number' id='banda' min='1' max='100'></input> kHz
+				<input type='number' id='banda' min='1' max='10' value='5' class='parametri'></input> kHz
 			</div>
 			<div class='row'>
 				<label for='soglia'  accesskey='s'>Soglia</label>
-				<input type='number' id='soglia' min='-30' max='30'></input>
+				<input type='number' id='soglia' min='-30' max='30' value='5' class='parametri'></input>
 			</div>
 			<div class='row'>
 				<input type='button' value='Avvia monitoraggio' id='btnMonitor'></input>

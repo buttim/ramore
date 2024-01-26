@@ -14,11 +14,13 @@ RTL_TCP = 'rtl_tcp' if sys.platform != 'win32' else "C:/rtl_sdr/rtl_tcp.exe"
 modo='ascolto'
 freq = 868E6
 threshold = 0
-bw = 1E6
+bw = 5e3
 lock = threading.Lock()
 proc = None
 lastRecording = None
 tLastRec = None
+outFile = None
+
 
 # https://stackoverflow.com/questions/11875770/how-to-overcome-datetime-datetime-not-json-serializable
 def json_serial(obj):
@@ -30,21 +32,37 @@ def json_serial(obj):
 
 
 def rtl_power():
-    global proc
+    global proc, outFile
     
+    try:
+        os.mkdir("log")
+    except FileExistsError:
+        pass
+    try:
+        print('***********',"log/" + datetime.now().strftime("%Y-%m-%d %H-%M-%S") + freq%'%.3f' + ".log")
+        outFile = open("log/" + datetime.now().strftime("%Y-%m-%d %H-%M-%S") + freq%'%.3f' + ".log", "a")
+    except:
+        logger.error("Impossibile creare file di log")
+
     if proc is not None:
         os.kill(proc.pid,signal.SIGTERM)
-    proc = Popen([RTL_POWER,"-f",f'{int(freq-bw/2)}:{int(freq+bw/2)}:{math.trunc(bw/32)}'],
+        proc.wait()
+    proc = Popen([RTL_POWER,"-f",f'{int(freq-bw/2)}:{int(freq+bw/2)}:{math.trunc(bw/16)}'],
           encoding='utf8',bufsize=0,stdout=PIPE)
     bot.msg("Attivata modalità monitoraggio")
     #TODO: attesa partenza o errore
     
 
 def rtl_tcp():
-    global proc
+    global proc, freq, outFile
+    
+    if outFile:
+        ouFile.close()
+        outFile = None
     
     if proc is not None:
         os.kill(proc.pid,signal.SIGTERM)
+        proc.wait()
     proc = Popen([RTL_TCP,"-a","0.0.0.0"],encoding='utf8')
     bot.msg("Attivata modalità ascolto remoto")
     #TODO: attesa partenza o errore
@@ -169,11 +187,18 @@ try:
                 except Exception:
                     print('eccezione in lettura rtl_power')
                 else:
-                    print(line)
-                    res = analisi(line)
-                    if res is not None:
-                        if res:
-                            bot.msg('Rilevato segnale')
+                    if line!='':
+                        if outFile:
+                            try:
+                                outFile.write(s)
+                                outFile.write("\n")
+                                outFile.flush()
+                            except:
+                                pass
+                        res = analisi(line)
+                        if res is not None:
+                            if res:
+                                bot.msg('Rilevato segnale')
                     
 except KeyboardInterrupt as e:
     print('chiusura')
