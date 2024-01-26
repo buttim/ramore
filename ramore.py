@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-import os, json, math, threading, logging, signal, sys, time, bot
+import os, json, math, threading, logging, shutil, signal, sys, time, tempfile, bot
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from datetime import date, datetime
@@ -12,9 +12,9 @@ RTL_POWER = 'rtl_power' if sys.platform != 'win32' else "C:/rtl_sdr/rtl_power.ex
 RTL_TCP = 'rtl_tcp' if sys.platform != 'win32' else "C:/rtl_sdr/rtl_tcp.exe"
 
 modo='ascolto'
-freq = 868E6
+freq = 868.343E6
 threshold = 0
-bw = 5e3
+bw = 25e3
 lock = threading.Lock()
 proc = None
 lastRecording = None
@@ -39,15 +39,14 @@ def rtl_power():
     except FileExistsError:
         pass
     try:
-        print('***********',"log/" + datetime.now().strftime("%Y-%m-%d %H-%M-%S") + freq%'%.3f' + ".log")
-        outFile = open("log/" + datetime.now().strftime("%Y-%m-%d %H-%M-%S") + freq%'%.3f' + ".log", "a")
+        outFile = open("log/" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S_") + str(int(freq)) + ".log", "a")
     except:
         logger.error("Impossibile creare file di log")
 
     if proc is not None:
         os.kill(proc.pid,signal.SIGTERM)
         proc.wait()
-    proc = Popen([RTL_POWER,"-f",f'{int(freq-bw/2)}:{int(freq+bw/2)}:{math.trunc(bw/16)}'],
+    proc = Popen([RTL_POWER,"-g","0","-f",f'{int(freq-bw/2)}:{int(freq+bw/2)}:25'],
           encoding='utf8',bufsize=0,stdout=PIPE)
     bot.msg("Attivata modalità monitoraggio")
     #TODO: attesa partenza o errore
@@ -57,7 +56,7 @@ def rtl_tcp():
     global proc, freq, outFile
     
     if outFile:
-        ouFile.close()
+        outFile.close()
         outFile = None
     
     if proc is not None:
@@ -97,6 +96,27 @@ class MyServer(BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
                 return
+            if uri.path == "/img":
+                if outFile is None or outFile.tell()==0:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                tmpFilename=tempfile.gettempdir()+'/'+os.path.basename(outFile.name).removesuffix('.log')+'.png'
+                heatmapProc=Popen(["./heatmap.py",outFile.name,tmpFilename]) 
+                result=heatmapProc.wait()
+                if result==0:
+                    self.send_response(200)
+                    self.send_header("Content-type", "image/png")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    with open(tmpFilename,'rb') as f:
+                        shutil.copyfileobj(f,self.wfile)
+                    os.remove(tmpFilename)
+                else:
+                    self.send_response(500)
+                    self.end_headers()
+                return
+                return
             if uri.path == "/stato":
                 self.send_response(200)
                 self.send_header("Content-type", "application/json")
@@ -119,7 +139,7 @@ class MyServer(BaseHTTPRequestHandler):
                         rtl_tcp()
                     except Exception as e:
                         response="KO"
-                        return
+                        raise
                 self.send_response(200)
                 self.send_header("Content-type", "text/plain")
                 self.send_header("Access-Control-Allow-Origin", "*")
@@ -144,7 +164,7 @@ class MyServer(BaseHTTPRequestHandler):
                 return
         except Exception as x:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            logger.error(exc_tb.tb_lineno, x)
+            logger.error(exc_tb.tb_lineno, str(x))
 
 
 def threadFunc():
@@ -166,7 +186,7 @@ if sys.platform!='win32':
     handler.setLevel(logging.WARNING)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-handler = logging.StreamHandler()
+handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.DEBUG)
 handler.setFormatter(formatter)
 logger.addHandler(handler)
@@ -188,9 +208,9 @@ try:
                     print('eccezione in lettura rtl_power')
                 else:
                     if line!='':
-                        if outFile:
+                        if outFile is not None:
                             try:
-                                outFile.write(s)
+                                outFile.write(line)
                                 outFile.write("\n")
                                 outFile.flush()
                             except:
@@ -204,3 +224,4 @@ except KeyboardInterrupt as e:
     print('chiusura')
     if proc is not None:
         os.kill(proc.pid,signal.SIGTERM)
+        proc.wait(timeout=3)

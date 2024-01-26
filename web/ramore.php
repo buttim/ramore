@@ -12,11 +12,13 @@
 		#f { width: 5em; }
 		#banda { width: 4em; }
 		#soglia { width: 3em; }
+		#correzione { width: 3em; }
 		#ascolto { margin-bottom: 50px }
 		#modalita { color: blue }
 		#input { float:left }
 		#impostazioni { margin-top:10px }
-		#chart-container { float:right; border :1px solid lightgray; width:600px; height:400px }
+		#chart { background-color:rgba(0,0,0,.1) }
+		#chart-container { float:right; border :1px solid lightgray; width:calc(100% - 500px); height:400px }
 		#tLastRec { margin-top: 10px }
 		#suggerimenti { margin-top:60px; width: 300px }
 		.rosso { color:indianred }
@@ -29,9 +31,11 @@
 		<script src="https://cdn.jsdelivr.net/npm/zebra_dialog@latest/dist/zebra_dialog.min.js"></script>
 		<script type="module" src='waitMe.min.js'></script>
 		<script>
+"strict";
 var chart, url='http://192.168.1.196:9999/';//TODO: localhost!
 const suggerimentoAscolto=`Adesso &egrave; possibile collegarsi remotamente con SDR# specificando sorgente "RTL TCP" e indirizzo ${location.host}:1234`,
-	suggerimentoMonitor='Il grafico mostra l&apos;analisi del segnale ricevuto ogni 10 secondi';
+	suggerimentoMonitor='Il grafico mostra l&apos;analisi del segnale ricevuto ogni 10 secondi',
+	minFftValue=-60, maxFftValue=60;
 var parametriModificati=false;
 	
 function getStato() {
@@ -54,7 +58,7 @@ function getStato() {
 			if (stato.lastRec.data==null) return;
 			$('#tLastRec').html($.timeago(Date.parse(stato.lastRec.time)));
 			chart.data.labels=Array(stato.lastRec.data.length).fill('');
-			chart.data.datasets[0].data=stato.lastRec.data.map(x=>[-30,x]);
+			chart.data.datasets[0].data=stato.lastRec.data.map(x=>[minFftValue,x]);
 			chart.update();
 		})
 		.fail(function(jqxhr, textStatus, error ) {
@@ -83,6 +87,7 @@ $(function () {
 	    year: "circa un anno",
 	    years: "%d anni"
 	};
+	$('a').prop('href',url+'img');	//TODO: pulire
 	$('#btnMonitor').on('click',function() {
 		$('body').waitMe({
 			effect: 'bouncePulse',
@@ -92,7 +97,8 @@ $(function () {
 		$.get(url+'monitor',{
 				f : Math.trunc(parseFloat($('#f').val())*1e6),
 				bw : Math.trunc(parseFloat($('#banda').val()*1000)),
-				thr : parseInt($('#soglia').val())
+				thr : parseInt($('#soglia').val()),
+				ppm : parseInt($('#correzione').val())
 			})
 			.done(function(x) {
 				console.log(x);
@@ -113,7 +119,7 @@ $(function () {
 				$('#btnAscolto').prop('disabled',true);
 			})
 			.fail(function(jqxhr, textStatus, error ) {
-			new $.Zebra_Dialog("Impossibile connettersi al server",{auto_close:3000});
+				new $.Zebra_Dialog("Impossibile connettersi al server",{auto_close:3000});
 			})
 			.always(function() {
 				$('body').waitMe('hide');
@@ -139,7 +145,7 @@ $(function () {
 			},
 			scales: {
 				x : { grid : { display : false } },
-				y : { beginAtZero : false, min : -30, max: 30 }
+				y : { beginAtZero : false, min : minFftValue, max: maxFftValue }
 			}
 		}
 	});
@@ -148,10 +154,10 @@ $(function () {
 		</script>
 	</head>
 	<body>
-		<h1><span class='rosso'>
-			Ra</span>dio <span class='rosso'>mo</span>nitoraggio <span class='rosso'>re</span>moto
-		</h1>
 		<div id='input'>
+			<h1><span class='rosso'>
+				Ra</span>dio <span class='rosso'>mo</span>nitoraggio <span class='rosso'>re</span>moto
+			</h1>
 			<div class='row' id='ascolto'>
 				<h2>Modalità: <span id='modalita'>inattivo</span></h2>
 				<input type='button' value='Ascolto' id='btnAscolto'></input>
@@ -162,17 +168,20 @@ $(function () {
 			</div>
 			<div class='row'>
 				<label for='banda' accesskey='b'>Banda</label>
-				<input type='number' id='banda' min='1' max='10' value='5' class='parametri'></input> kHz
+				<input type='number' id='banda' min='2' max='25' value='5' class='parametri'></input> kHz
 			</div>
 			<div class='row'>
 				<label for='soglia'  accesskey='s'>Soglia</label>
-				<input type='number' id='soglia' min='-30' max='30' value='5' class='parametri'></input>
+				<input type='number' id='soglia' min='-60' max='60' value='5' class='parametri'></input>
+			</div>
+			<div class='row'>
+				<label for='correzione'  accesskey='s'>Correzione</label>
+				<input type='number' id='correzione' min='-100' max='100' value='0' class='parametri'></input> ppm
 			</div>
 			<div class='row'>
 				<input type='button' value='Avvia monitoraggio' id='btnMonitor'></input>
 			</div>
 			<div id='suggerimenti'>
-				bla
 			</div>
 		</div>
 		<div id='chart-container'>
@@ -183,6 +192,7 @@ $(function () {
 				Soglia: <span id='_soglia' class='impostazione'></span>
 			</div>
 			<div>Ultimo aggiornamento <span id='tLastRec'>-</span></div>
+			<a target='_new' href='#'>immagine acquisizione</a>
 		</div>
 	</body>
 </html>
