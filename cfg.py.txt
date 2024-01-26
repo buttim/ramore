@@ -1,0 +1,2 @@
+TOKEN = 'put your bot token here'
+CHAT_ID = "put the chat id here"
