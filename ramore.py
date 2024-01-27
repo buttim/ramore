@@ -14,6 +14,7 @@ RTL_TCP = 'rtl_tcp' if sys.platform != 'win32' else "C:/rtl_sdr/rtl_tcp.exe"
 modo='ascolto'
 freq = 868.343E6
 threshold = 0
+ppm = 0
 bw = 25e3
 lock = threading.Lock()
 proc = None
@@ -46,7 +47,7 @@ def rtl_power():
     if proc is not None:
         os.kill(proc.pid,signal.SIGTERM)
         proc.wait()
-    proc = Popen([RTL_POWER,"-g","0","-f",f'{int(freq-bw/2)}:{int(freq+bw/2)}:25'],
+    proc = Popen([RTL_POWER,"-p",str(ppm),"-g","0","-f",f'{int(freq-bw/2)}:{int(freq+bw/2)}:25'],
           encoding='utf8',bufsize=0,stdout=PIPE)
     bot.msg("Attivata modalità monitoraggio")
     #TODO: attesa partenza o errore
@@ -87,7 +88,7 @@ class MyServer(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
 
     def do_GET(self):
-        global modo,freq, threshold,bw
+        global modo, freq, threshold, bw, ppm, lastRecording, tLastRec
         try:
             print(self.path)
             uri = urlparse(self.path)
@@ -101,13 +102,15 @@ class MyServer(BaseHTTPRequestHandler):
                     self.send_response(404)
                     self.end_headers()
                     return
-                tmpFilename=tempfile.gettempdir()+'/'+os.path.basename(outFile.name).removesuffix('.log')+'.png'
+                basename = os.path.basename(outFile.name).removesuffix('.log')+'.png'
+                tmpFilename=tempfile.gettempdir()+'/'+basename
                 heatmapProc=Popen(["./heatmap.py",outFile.name,tmpFilename]) 
                 result=heatmapProc.wait()
                 if result==0:
                     self.send_response(200)
                     self.send_header("Content-type", "image/png")
                     self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header('Content-Disposition', f'filename="{basename}"')
                     self.end_headers()
                     with open(tmpFilename,'rb') as f:
                         shutil.copyfileobj(f,self.wfile)
@@ -115,7 +118,6 @@ class MyServer(BaseHTTPRequestHandler):
                 else:
                     self.send_response(500)
                     self.end_headers()
-                return
                 return
             if uri.path == "/stato":
                 self.send_response(200)
@@ -147,10 +149,14 @@ class MyServer(BaseHTTPRequestHandler):
                 self.wfile.write(bytes(response, "utf-8"))
                 return
             if uri.path == "/monitor":
+                lastRecording = None
+                tLastRec = None
                 if "f" in params:
                    freq = float(params["f"][0])
                 if "thr" in params:
                    threshold = float(params["thr"][0])
+                if "ppm" in params:
+                    ppm = float(params["ppm"][0])
                 if "bw" in params:
                     bw = float(params["bw"][0])
                 with lock:
@@ -192,7 +198,7 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 rtl_power()
-modo='monitor'
+modo = 'monitor'
 
 t = threading.Thread(target=threadFunc, daemon=True)
 t.start()
@@ -200,25 +206,25 @@ t.start()
 try:
     while True:
         time.sleep(1)
+        line=''
         with lock:
             if modo=='monitor' and proc is not None:
                 try:
                     line = proc.stdout.readline().rstrip()
                 except Exception:
                     print('eccezione in lettura rtl_power')
-                else:
-                    if line!='':
-                        if outFile is not None:
-                            try:
-                                outFile.write(line)
-                                outFile.write("\n")
-                                outFile.flush()
-                            except:
-                                pass
-                        res = analisi(line)
-                        if res is not None:
-                            if res:
-                                bot.msg('Rilevato segnale')
+        if line!='':
+            if outFile is not None:
+                try:
+                    outFile.write(line)
+                    outFile.write("\n")
+                    outFile.flush()
+                except:
+                    pass
+            res = analisi(line)
+            if res is not None:
+                if res:
+                    bot.msg('Rilevato segnale')
                     
 except KeyboardInterrupt as e:
     print('chiusura')

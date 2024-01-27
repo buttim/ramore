@@ -56,6 +56,7 @@ function getStato() {
 			$('#_banda').html((parseFloat(stato.bw)/1000).toFixed(1));
 			$('#_soglia').html(stato.thr);
 			if (stato.lastRec.data==null) return;
+			$('a').show();
 			$('#tLastRec').html($.timeago(Date.parse(stato.lastRec.time)));
 			chart.data.labels=Array(stato.lastRec.data.length).fill('');
 			chart.data.datasets[0].data=stato.lastRec.data.map(x=>[minFftValue,x]);
@@ -69,7 +70,28 @@ function getStato() {
 		 });
 }
 
+function getCookies() {
+	var res={};
+	var a=document.cookie.split(';');
+	a.forEach(function(x) {
+		var pair=x.split('=');
+		res[pair[0].trim()]=pair[1].trim();
+	});
+	return res;
+}
+
 $(function () {
+	var cookies=getCookies();
+
+	if ('f' in cookies)
+		$('#f').val(cookies['f']/1E6);
+	if ('bw' in cookies)
+		$('#banda').val(cookies['bw']/1000);
+	if ('thr' in cookies)
+		$('#soglia').val(cookies['thr']);
+	if ('ppm' in cookies)
+		$('#correzione').val(cookies['ppm']);
+
 	$.timeago.settings.strings = {
 	    prefixAgo: null,
 	    prefixFromNow: "fra",
@@ -94,12 +116,15 @@ $(function () {
 			bg: 'rgba(255,255,255,0.9)',
 			text:'cambio modalità in corso...'
 		});
-		$.get(url+'monitor',{
-				f : Math.trunc(parseFloat($('#f').val())*1e6),
-				bw : Math.trunc(parseFloat($('#banda').val()*1000)),
-				thr : parseInt($('#soglia').val()),
-				ppm : parseInt($('#correzione').val())
-			})
+		var f=Math.trunc(parseFloat($('#f').val())*1e6),
+			bw=Math.trunc(parseFloat($('#banda').val()*1000)),
+			thr=parseInt($('#soglia').val()),
+			ppm=parseInt($('#correzione').val());
+		document.cookie=`f=${f}`;
+		document.cookie=`bw=${bw}`;
+		document.cookie=`thr=${thr}`;
+		document.cookie=`ppm=${ppm}`;
+		$.get(url+'monitor',{ f : f, bw : bw, thr : thr, ppm : ppm })
 			.done(function(x) {
 				console.log(x);
 			})
@@ -129,7 +154,7 @@ $(function () {
 	chart=new Chart($('#chart'), {
 		type: 'bar',
 		data: {
-			labels: ['', '', '', '', '', ''],
+			//labels: ['', '', '', '', '', ''],
 			datasets: [{
 				label: 'Livello',
 				barPercentage: 1,
@@ -139,8 +164,8 @@ $(function () {
 		options: {
 			responsive: true,
 			maintainAspectRatio: false,
-			tooltip : { enabled : false },
 			plugins : {
+				tooltip : { enabled : false },
 				legend : { display : false }
 			},
 			scales: {
@@ -192,7 +217,7 @@ $(function () {
 				Soglia: <span id='_soglia' class='impostazione'></span>
 			</div>
 			<div>Ultimo aggiornamento <span id='tLastRec'>-</span></div>
-			<a target='_new' href='#'>immagine acquisizione</a>
+			<a target='_new' href='#' style='display:hidden'>immagine acquisizione</a>
 		</div>
 	</body>
 </html>
