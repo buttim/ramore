@@ -21,7 +21,7 @@ proc = None
 lastRecording = None
 tLastRec = None
 outFile = None
-
+poll=None
 
 # https://stackoverflow.com/questions/11875770/how-to-overcome-datetime-datetime-not-json-serializable
 def json_serial(obj):
@@ -32,24 +32,29 @@ def json_serial(obj):
     raise TypeError("Type %s not serializable" % type(obj))
 
 
-def rtl_power():
+def rtl_power(newFile=True):
     global proc, outFile
     
-    try:
-        os.mkdir("log")
-    except FileExistsError:
-        pass
-    try:
-        outFile = open("log/" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S_") + str(int(freq)) + ".log", "a")
-    except:
-        logger.error("Impossibile creare file di log")
+    if newFile:
+        try:
+            os.mkdir("log")
+        except FileExistsError:
+            pass
+        try:
+            outFile = open("log/" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S_") + str(int(freq)) + ".log", "a")
+        except:
+            logger.error("Impossibile creare file di log")
 
     if proc is not None:
         os.kill(proc.pid,signal.SIGTERM)
         proc.wait()
     proc = Popen([RTL_POWER,"-p",str(ppm),"-g","0","-f",f'{int(freq-bw/2)}:{int(freq+bw/2)}:25'],
-          encoding='utf8',bufsize=0,stdout=PIPE)
-    bot.msg("Attivata modalità monitoraggio")
+                    encoding='utf8',bufsize=0,stdout=PIPE, stderr=PIPE)
+    os.set_blocking(proc.stderr.fileno(), False)
+    os.set_blocking(proc.stdout.fileno(), False)
+    
+    if newFile:
+        bot.msg("Attivata modalità monitoraggio")
     #TODO: attesa partenza o errore
     
 
@@ -104,7 +109,7 @@ class MyServer(BaseHTTPRequestHandler):
                     return
                 basename = os.path.basename(outFile.name).removesuffix('.log')+'.png'
                 tmpFilename=tempfile.gettempdir()+'/'+basename
-                heatmapProc=Popen(["./heatmap.py",outFile.name,tmpFilename]) 
+                heatmapProc=Popen(["./heatmap.py","--ytick","5m",outFile.name,tmpFilename]) 
                 result=heatmapProc.wait()
                 if result==0:
                     self.send_response(200)
@@ -170,7 +175,7 @@ class MyServer(BaseHTTPRequestHandler):
                 return
         except Exception as x:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            logger.error(exc_tb.tb_lineno, str(x))
+            logger.error("Exception at line %d: %s",exc_tb.tb_lineno, str(x))
 
 
 def threadFunc():
@@ -182,7 +187,7 @@ def threadFunc():
             break
         except Exception as x:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            logger.error(exc_tb.tb_lineno, x)
+            logger.error("Exception at line %d: %s",exc_tb.tb_lineno, str(x))
     webServer.server_close()
 
 logger = logging.getLogger(__name__)
@@ -193,8 +198,8 @@ if sys.platform!='win32':
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.DEBUG)
 handler.setFormatter(formatter)
+handler.setLevel(logging.DEBUG)
 logger.addHandler(handler)
 
 rtl_power()
@@ -203,31 +208,56 @@ modo = 'monitor'
 t = threading.Thread(target=threadFunc, daemon=True)
 t.start()
 
+#TODO: verificare livello effetivo del logger (non quadra)
+logger.debug('debug')
+logger.warning('warning %d',logger.getEffectiveLevel())
+logger.info('info')
+logger.error('START %d %s',1,'pippo')
+
 try:
     while True:
         time.sleep(1)
-        line=''
+        doRead=False
         with lock:
             if modo=='monitor' and proc is not None:
+                doRead=True
+        if doRead:
+            while True:
+                try:
+                    l=proc.stderr.readline()
+                except TypeError:
+                    break
+                if l is not None:
+                    l=l.rstrip()
+                    if l=='Error: dropped samples.' or l=='No supported devices found.':
+                        time.sleep(1)
+                        rtl_power(False)
+                        break
+                    else:
+                        logger.error('STDERR: [%s]',l)
+            while True:
                 try:
                     line = proc.stdout.readline().rstrip()
+                except TypeError:
+                    break
                 except Exception:
                     print('eccezione in lettura rtl_power')
-        if line!='':
-            if outFile is not None:
-                try:
-                    outFile.write(line)
-                    outFile.write("\n")
-                    outFile.flush()
-                except:
-                    pass
-            res = analisi(line)
-            if res is not None:
-                if res:
-                    bot.msg('Rilevato segnale')
-                    
+                if outFile is not None:
+                    try:
+                        outFile.write(line)
+                        outFile.write("\n")
+                        outFile.flush()
+                    except:
+                        pass
+                res = analisi(line)
+                if res is not None:
+                    if res:
+                        bot.msg('Rilevato segnale')
 except KeyboardInterrupt as e:
     print('chiusura')
     if proc is not None:
         os.kill(proc.pid,signal.SIGTERM)
         proc.wait(timeout=3)
+except Exception as x:
+    exc_type, exc_obj, exc_tb = sys.exc_info()
+    logger.error("Exception at line %d: %s",exc_tb.tb_lineno, str(x))
