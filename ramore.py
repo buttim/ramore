@@ -3,7 +3,7 @@ import os, json, math, threading, logging, shutil, signal, sys, time, tempfile, 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from datetime import date, datetime
-from logging.handlers import SysLogHandler
+from systemd.journal import JournalHandler
 from subprocess import *
 
 HOST_NAME = "0.0.0.0"
@@ -75,20 +75,25 @@ def rtl_tcp():
 def analisi(line):
     global threshold, lastRecording, tLastRec
     
-    a=line.split(',')
-    if len(a)<10:
+    try:
+        a=line.split(',')
+        if len(a)<10:
+            return None
+        data=a[0]
+        ora=a[1]
+        freqLo=int(a[2])
+        freqHi=int(a[3])
+        binSize=float(a[4])
+        unk=a[5]
+        a = [float(x) for x in a[6:]]
+        tLastRec=datetime.now()
+        lastRecording = a
+        return any(x>threshold for x in a)
+    except Exception as x:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        logger.error("Exception at line %d: %s",exc_tb.tb_lineno, str(x))
         return None
-    data=a[0]
-    ora=a[1]
-    freqLo=int(a[2])
-    freqHi=int(a[3])
-    binSize=float(a[4])
-    unk=a[5]
-    a = [float(x) for x in a[6:]]
-    tLastRec=datetime.now()
-    lastRecording = a
-    return any(x>threshold for x in a)
-    
+        
 class MyServer(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
 
@@ -193,26 +198,24 @@ def threadFunc():
 logger = logging.getLogger(__name__)
 formatter = logging.Formatter(fmt="%(asctime)s: %(message)s", datefmt="%H:%M:%S")
 if sys.platform!='win32':
-    handler = SysLogHandler(address="/dev/log")
-    handler.setLevel(logging.WARNING)
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    logger.addHandler(JournalHandler(SYSLOG_IDENTIFIER='ramore'))
 handler = logging.StreamHandler(sys.stdout)
 handler.setFormatter(formatter)
-handler.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 logger.addHandler(handler)
 
-rtl_power()
-modo = 'monitor'
+p=Popen(['killall','rtl_tcp'])
+p.wait()
+p=Popen(['killall','rtl_power'])
+p.wait()
+
+rtl_tcp()
+modo = 'ascolto'
 
 t = threading.Thread(target=threadFunc, daemon=True)
 t.start()
 
-#TODO: verificare livello effetivo del logger (non quadra)
-logger.debug('debug')
-logger.warning('warning %d',logger.getEffectiveLevel())
-logger.info('info')
-logger.error('START %d %s',1,'pippo')
+logger.info('start')
 
 try:
     while True:
@@ -229,12 +232,13 @@ try:
                     break
                 if l is not None:
                     l=l.rstrip()
+                    #TODO: gestire errore "usb_claim_interface error -6"
                     if l=='Error: dropped samples.' or l=='No supported devices found.':
                         time.sleep(1)
                         rtl_power(False)
                         break
                     else:
-                        logger.error('STDERR: [%s]',l)
+                        logger.debug('STDERR: [%s]',l)
             while True:
                 try:
                     line = proc.stdout.readline().rstrip()

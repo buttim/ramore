@@ -32,14 +32,18 @@
 		<script type="module" src='waitMe.min.js'></script>
 		<script>
 "use strict";
-var chart, url='http://192.168.1.196:9999/';//TODO: localhost!
+var chart, url = new URL(window.location.href);
+
+url.port = 9999;
+url.pathname = '/';
+
 const suggerimentoAscolto=`Adesso &egrave; possibile collegarsi remotamente con SDR# specificando sorgente "RTL TCP" e indirizzo ${location.host}:1234`,
 	suggerimentoMonitor='Il grafico mostra l&apos;analisi del segnale ricevuto ogni 10 secondi',
 	minFftValue=-60, maxFftValue=60;
 var parametriModificati=false;
 	
 function getStato() {
-	$.getJSON(url+'stato')
+	$.getJSON(url+'/stato')
 		.done(function(stato) {
 			$('#modalita').html(stato.modo);
 			if (stato.modo=='ascolto') {
@@ -72,10 +76,11 @@ function getStato() {
 
 function getCookies() {
 	var res={};
-	var a=document.cookie.split(';');
+	var a=document.cookie.trim().split(';');
 	a.forEach(function(x) {
 		var pair=x.split('=');
-		res[pair[0].trim()]=pair[1].trim();
+		if (pair.length==2) 
+			res[pair[0].trim()]=pair[1].trim();
 	});
 	return res;
 }
@@ -125,7 +130,7 @@ $(function () {
 		document.cookie=`bw=${bw}`;
 		document.cookie=`thr=${thr}`;
 		document.cookie=`ppm=${ppm}`;
-		$.get(url+'monitor',{ f : f, bw : bw, thr : thr, ppm : ppm })
+		$.get(url+'/monitor',{ f : f, bw : bw, thr : thr, ppm : ppm })
 			.done(function(x) {
 				console.log(x);
 			})
@@ -139,7 +144,7 @@ $(function () {
 	});
 	$('#btnAscolto').on('click',function() {
 		$('body').waitMe({text:'cambio modalità in corso...'});
-		$.get(url+'ascolto')
+		$.get(url+'/ascolto')
 			.done(function(x) {
 				console.log(x);
 				$('#btnAscolto').prop('disabled',true);
@@ -218,7 +223,7 @@ $(function () {
 				Soglia: <span id='_soglia' class='impostazione'></span>
 			</div>
 			<div style='float:left'>Ultimo aggiornamento <span id='tLastRec'>-</span></div>
-			<a id='imgLink' target='_new' href='#' style='display:hidden; float:right'>immagine acquisizione</a>
+			<a id='imgLink' target='_new' href='#' style='display:hidden; float:right'>visualizza</a>
 		</div>
 	</body>
 </html>
