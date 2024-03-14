@@ -20,6 +20,7 @@ lock = threading.Lock()
 proc = None
 lastRecording = None
 tLastRec = None
+tStart = None
 outFile = None
 poll=None
 
@@ -54,7 +55,7 @@ def rtl_power(newFile=True):
     os.set_blocking(proc.stdout.fileno(), False)
     
     if newFile:
-        bot.msg("Attivata modalità monitoraggio")
+        bot.msg(f"Attivata modalità monitoraggio ({freq/1E6:.3f}MHz)")
     #TODO: attesa partenza o errore
     
 
@@ -98,7 +99,7 @@ class MyServer(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
 
     def do_GET(self):
-        global modo, freq, threshold, bw, ppm, lastRecording, tLastRec
+        global modo, freq, threshold, bw, ppm, lastRecording, tLastRec, tStart
         try:
             print(self.path)
             uri = urlparse(self.path)
@@ -139,6 +140,7 @@ class MyServer(BaseHTTPRequestHandler):
                     "f": freq,
                     "thr": threshold,
                     "bw": bw,
+                    "start": tStart,
                     "lastRec": {"time": tLastRec, "data": lastRecording},
                 }
                 self.wfile.write(bytes(json.dumps(status, default=json_serial), "utf-8"))
@@ -161,6 +163,7 @@ class MyServer(BaseHTTPRequestHandler):
             if uri.path == "/monitor":
                 lastRecording = None
                 tLastRec = None
+                tStart = datetime.now()
                 if "f" in params:
                    freq = float(params["f"][0])
                 if "thr" in params:

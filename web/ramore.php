@@ -52,6 +52,7 @@ function getStato() {
 				$('#chart-container').hide();
 			}
 			else if (stato.modo=='monitor') {
+				$('#btnAscolto').prop('disabled',false);
 				$('#suggerimenti').html(suggerimentoMonitor);
 				$('#chart-container').show();
 			}
@@ -62,6 +63,7 @@ function getStato() {
 			if (stato.lastRec.data==null) return;
 			$('#imgLink').show();
 			$('#tLastRec').html($.timeago(Date.parse(stato.lastRec.time)));
+			$('#tStart').html($.timeago(Date.parse(stato.start)));
 			chart.data.labels=Array(stato.lastRec.data.length).fill('');
 			chart.data.datasets[0].data=stato.lastRec.data.map(x=>[minFftValue,x]);
 			chart.update();
@@ -114,6 +116,7 @@ $(function () {
 	    year: "circa un anno",
 	    years: "%d anni"
 	};
+	$('.timeago').timeago();
 	$('#imgLink').hide();
 	$('#imgLink').prop('href',url+'img');	//TODO: pulire
 	$('#btnMonitor').on('click',function() {
@@ -132,7 +135,6 @@ $(function () {
 		document.cookie=`ppm=${ppm}`;
 		$.get(url+'/monitor',{ f : f, bw : bw, thr : thr, ppm : ppm })
 			.done(function(x) {
-				console.log(x);
 			})
 			.fail(function(jqxhr, textStatus, error ) {
 				new $.Zebra_Dialog("Impossibile connettersi al server",{auto_close:3000});
@@ -181,6 +183,11 @@ $(function () {
 		}
 	});
 	getStato();
+	setTimeout(function(){
+		var t=$('#tStart').prop('datetime');
+		if (typeof t != 'undefined')
+			$('#tStart').text($.timeago(t));
+	},5000);
 });
 		</script>
 	</head>
@@ -202,7 +209,7 @@ $(function () {
 				<input type='number' id='banda' min='2' max='25' value='5' class='parametri'></input> kHz
 			</div>
 			<div class='row'>
-				<label for='soglia'  accesskey='s'>Soglia</label>
+				<label for='soglia'  accesskey='s'>Soglia di notifica</label>
 				<input type='number' id='soglia' min='-60' max='60' value='5' class='parametri'></input>
 			</div>
 			<div class='row'>
@@ -212,8 +219,7 @@ $(function () {
 			<div class='row'>
 				<input type='button' value='Avvia monitoraggio' id='btnMonitor'></input>
 			</div>
-			<div id='suggerimenti'>
-			</div>
+			<div id='suggerimenti'></div>
 		</div>
 		<div id='chart-container'>
 			<canvas id="chart"></canvas>
@@ -222,6 +228,7 @@ $(function () {
 				Banda: <span id='_banda' class='impostazione'></span>kHz
 				Soglia: <span id='_soglia' class='impostazione'></span>
 			</div>
+			<div>Avviato <span id='tStart' class='timeago'>-</span></div>
 			<div style='float:left'>Ultimo aggiornamento <span id='tLastRec'>-</span></div>
 			<a id='imgLink' target='_new' href='#' style='display:hidden; float:right'>visualizza</a>
 		</div>

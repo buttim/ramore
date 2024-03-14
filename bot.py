@@ -10,3 +10,5 @@ def msg(txt):
     url = f"https://api.telegram.org/bot{cfg.TOKEN}/sendMessage?chat_id={cfg.CHAT_ID}&text={txt}"
     result = requests.get(url).json()
     return result['ok']
+    
+updates()
